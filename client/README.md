@@ -18,6 +18,28 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Recent memories
+
+The home page loads its two most recent entries from the authenticated
+`GET /api/memories/recent` endpoint. Memory documents belong to a user through
+their `owner` ObjectId and include `title`, `imageUrl`, and an optional
+`category`; timestamps provide the displayed date. The list is empty until
+matching documents exist in MongoDB.
+
+## Partner invitations
+
+The home card can create a single-use invitation link that expires after seven
+days. The invitee can register or sign in from that link to connect both
+accounts. Invitation codes are stored as hashes in MongoDB.
+
+## Couple profile
+
+The `/us` page loads the signed-in user's partner, their own memory count, and
+the shared anniversary and love note from the authenticated partner profile
+API. Anniversary dates and the single shared note are stored per paired account
+pair in MongoDB. Notes can be up to 500 characters. The invitation section uses
+the same single-use, seven-day link flow as the home page.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

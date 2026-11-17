@@ -6,6 +6,9 @@ import dotenv from "dotenv";
 import { Server } from "socket.io";
 import { connectDatabase } from "./config/database.js";
 import healthRoutes from "./routes/health.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import memoryRoutes from "./routes/memory.routes.js";
+import partnerRoutes from "./routes/partner.routes.js";
 
 dotenv.config();
 
@@ -35,6 +38,9 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/health", healthRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/memories", memoryRoutes);
+app.use("/api/partners", partnerRoutes);
 
 const io = new Server(server, {
   cors: {
@@ -54,8 +60,29 @@ io.on("connection", (socket) => {
   });
 });
 
+app.use((error, req, res, next) => {
+  const isInvalidJson = error?.type === "entity.parse.failed";
+  if (!isInvalidJson) {
+    console.error(
+      "API request failed:",
+      req.method,
+      req.originalUrl,
+      error?.name || "Error",
+    );
+  }
+  res.status(isInvalidJson ? 400 : 500).json({
+    success: false,
+    message: isInvalidJson
+      ? "Request body must be valid JSON."
+      : "An unexpected server error occurred.",
+  });
+});
+
 async function startServer() {
   try {
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET is missing");
+    }
     await connectDatabase();
 
     server.listen(PORT, () => {
