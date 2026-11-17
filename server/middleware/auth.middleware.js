@@ -11,7 +11,7 @@ function getJwtSecret() {
   return secret;
 }
 
-function getSessionToken(req) {
+export function getSessionToken(req) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
 
@@ -73,7 +73,9 @@ export async function requireAuth(req, res, next) {
     });
   }
 
-  const user = await User.findById(payload.sub).select("_id name email");
+  const user = await User.findById(payload.sub).select(
+    "_id name email profileImageUrl partnerId",
+  );
   if (!user) {
     clearAuthCookie(res);
     return res.status(401).json({
@@ -91,6 +93,7 @@ export function getSafeUser(user) {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
+    profileImageUrl: user.profileImageUrl || null,
   };
 }
 

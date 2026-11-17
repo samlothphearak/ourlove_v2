@@ -23,11 +23,27 @@ const coupleProfileSchema = new mongoose.Schema(
       maxlength: 500,
       default: "",
     },
+    unlinkedAt: {
+      type: Date,
+      default: null,
+    },
+    deletionCodeHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    deletionConfirmedBy: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
+    },
   },
   { timestamps: true },
 );
 
 coupleProfileSchema.index({ userA: 1, userB: 1 }, { unique: true });
+coupleProfileSchema.index({ userA: 1, unlinkedAt: 1, updatedAt: -1 });
+coupleProfileSchema.index({ userB: 1, unlinkedAt: 1, updatedAt: -1 });
 
 const CoupleProfile =
   mongoose.models.CoupleProfile ||

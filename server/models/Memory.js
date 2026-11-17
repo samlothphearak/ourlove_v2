@@ -26,6 +26,16 @@ const memorySchema = new mongoose.Schema(
       maxlength: 40,
       default: "Together",
     },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: "",
+    },
+    likedBy: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
   },
   { timestamps: true },
 );

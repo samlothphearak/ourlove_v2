@@ -3,6 +3,7 @@ import { API_URL, ApiError } from "./api";
 export interface PartnerSummary {
   id: string;
   name: string;
+  profileImageUrl: string | null;
 }
 
 export interface PartnerInvitation {
@@ -10,11 +11,23 @@ export interface PartnerInvitation {
   expiresAt: string;
 }
 
+export interface ArchivedPartnerProfile {
+  id: string;
+  formerPartner: PartnerSummary;
+  anniversaryDate: string | null;
+  loveNote: string;
+  unlinkedAt: string;
+  deletionCodeSet: boolean;
+  youConfirmed: boolean;
+  partnerConfirmed: boolean;
+}
+
 export interface PartnerPageData {
   partner: PartnerSummary | null;
   anniversaryDate: string | null;
   loveNote: string;
   memoriesCount: number;
+  archivedProfiles: ArchivedPartnerProfile[];
 }
 
 export type PartnerProfileUpdate = {
@@ -59,6 +72,7 @@ function readPartnerPageData(value: unknown): PartnerPageData {
   if (
     !isRecord(value) ||
     !("partner" in value) ||
+    !Array.isArray(value.archivedProfiles) ||
     !isRecord(value.profile) ||
     !(
       value.profile.anniversaryDate === null ||
@@ -77,6 +91,7 @@ function readPartnerPageData(value: unknown): PartnerPageData {
     anniversaryDate: value.profile.anniversaryDate,
     loveNote: value.profile.loveNote,
     memoriesCount: value.memoriesCount,
+    archivedProfiles: value.archivedProfiles.map(readArchivedPartnerProfile),
   };
 }
 
@@ -85,11 +100,71 @@ function readPartner(value: unknown): PartnerSummary | null {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
-    typeof value.name !== "string"
+    typeof value.name !== "string" ||
+    (value.profileImageUrl !== null &&
+      typeof value.profileImageUrl !== "string")
   ) {
     throw new Error("The partner API returned an invalid partner.");
   }
-  return { id: value.id, name: value.name };
+  return {
+    id: value.id,
+    name: value.name,
+    profileImageUrl: value.profileImageUrl,
+  };
+}
+
+function readArchivedPartnerProfile(value: unknown): ArchivedPartnerProfile {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.unlinkedAt !== "string" ||
+    !isRecord(value.profile) ||
+    !(
+      value.profile.anniversaryDate === null ||
+      typeof value.profile.anniversaryDate === "string"
+    ) ||
+    typeof value.profile.loveNote !== "string" ||
+    typeof value.deletionCodeSet !== "boolean" ||
+    typeof value.youConfirmed !== "boolean" ||
+    typeof value.partnerConfirmed !== "boolean"
+  ) {
+    throw new Error("The archived partner API returned an invalid profile.");
+  }
+
+  const formerPartner = readPartner(value.formerPartner);
+  if (!formerPartner) {
+    throw new Error("The archived partner API returned no former partner.");
+  }
+
+  return {
+    id: value.id,
+    formerPartner,
+    anniversaryDate: value.profile.anniversaryDate,
+    loveNote: value.profile.loveNote,
+    unlinkedAt: value.unlinkedAt,
+    deletionCodeSet: value.deletionCodeSet,
+    youConfirmed: value.youConfirmed,
+    partnerConfirmed: value.partnerConfirmed,
+  };
+}
+
+export async function unlinkPartner(): Promise<PartnerPageData> {
+  return readPartnerPageData(await requestPartner("/unlink", "POST"));
+}
+
+export async function confirmArchivedProfileDeletion(
+  profileId: string,
+  code: string,
+): Promise<boolean> {
+  const result = await requestPartner(
+    `/archives/${encodeURIComponent(profileId)}/confirm-delete`,
+    "POST",
+    { code },
+  );
+  if (!isRecord(result) || typeof result.deleted !== "boolean") {
+    throw new Error("The deletion API returned an invalid response.");
+  }
+  return result.deleted;
 }
 
 export async function getPartnerPageData(): Promise<PartnerPageData> {

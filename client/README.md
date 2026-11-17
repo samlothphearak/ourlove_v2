@@ -18,13 +18,19 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## Recent memories
+## Memories
 
-The home page loads its two most recent entries from the authenticated
-`GET /api/memories/recent` endpoint. Memory documents belong to a user through
-their `owner` ObjectId and include `title`, `imageUrl`, and an optional
-`category`; timestamps provide the displayed date. The list is empty until
-matching documents exist in MongoDB.
+The `/memories` page loads the signed-in user's records and, while they are
+mutually linked, their partner's records from the authenticated
+`GET /api/memories` endpoint. Memories remain owned by their creator in MongoDB.
+The home page shows the two most recent memories from the current couple through
+`GET /api/memories/recent`. Unlinking stops sharing the former partner's
+memories.
+
+Adding a memory uploads its photo to Cloudinary and saves its details to
+MongoDB. Uploads accept JPEG, PNG, or WebP images up to 5 MB and require the
+Cloudinary environment variables listed below. Likes are stored per account,
+so the selected state and count persist when the page is reloaded.
 
 ## Partner invitations
 
@@ -34,11 +40,27 @@ accounts. Invitation codes are stored as hashes in MongoDB.
 
 ## Couple profile
 
-The `/us` page loads the signed-in user's partner, their own memory count, and
-the shared anniversary and love note from the authenticated partner profile
-API. Anniversary dates and the single shared note are stored per paired account
-pair in MongoDB. Notes can be up to 500 characters. The invitation section uses
-the same single-use, seven-day link flow as the home page.
+The `/us` page loads the signed-in user's partner, the current couple's memory
+count, and the shared anniversary and love note from the authenticated partner
+profile API. Anniversary dates and the single shared note are stored per paired
+account pair in MongoDB. Notes can be up to 500 characters. The invitation
+section uses the same single-use, seven-day link flow as the home page.
+
+Account settings let a user update their display name, change their password
+after verifying the current password, and upload a profile image. Image uploads
+require `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and
+`CLOUDINARY_API_SECRET` in the server environment. Unlinking preserves the
+shared profile in both accounts. Either former partner can propose deletion
+with a shared 8-64 character secret; both must enter the same secret and
+confirm before the shared profile is removed.
+
+## Real-time chat
+
+The `/chat` page loads the latest 50 messages from MongoDB and listens for new
+messages and partner presence through authenticated Socket.IO connections.
+Older history is fetched in pages as needed. Only users with a reciprocal
+partner link can access the conversation; unlinking disconnects both users.
+Messages remain stored but are not accessible while the users are unpaired.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

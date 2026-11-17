@@ -17,6 +17,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
       maxlength: 254,
     },
+    profileImageUrl: {
+      type: String,
+      default: null,
+      match: /^https:\/\/\S+$/i,
+    },
     passwordHash: {
       type: String,
       required: true,

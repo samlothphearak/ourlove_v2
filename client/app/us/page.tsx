@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarHeart,
@@ -25,12 +25,17 @@ import {
   AuthError,
   getCurrentUser,
   logout,
+  updateAccountProfile,
+  uploadProfileImage,
   type AuthUser,
 } from "../../lib/auth";
 import {
+  confirmArchivedProfileDeletion,
   createPartnerInvitation,
   getPartnerPageData,
+  unlinkPartner,
   updatePartnerProfile,
+  type ArchivedPartnerProfile,
   type PartnerPageData,
   type PartnerProfileUpdate,
 } from "../../lib/partner";
@@ -63,6 +68,15 @@ export default function UsPage() {
   const [profileData, setProfileData] = useState<PartnerPageData | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [profileError, setProfileError] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isUpdatingAccount, setIsUpdatingAccount] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState("");
@@ -73,6 +87,16 @@ export default function UsPage() {
   const [invitationError, setInvitationError] = useState("");
   const [isCreatingInvitation, setIsCreatingInvitation] = useState(false);
   const [invitationCopied, setInvitationCopied] = useState(false);
+  const [showUnlinkConfirmation, setShowUnlinkConfirmation] = useState(false);
+  const [unlinkError, setUnlinkError] = useState("");
+  const [unlinkNotice, setUnlinkNotice] = useState("");
+  const [isUnlinking, setIsUnlinking] = useState(false);
+  const [deletionCodes, setDeletionCodes] = useState<Record<string, string>>(
+    {},
+  );
+  const [deletionError, setDeletionError] = useState("");
+  const [deletionNotice, setDeletionNotice] = useState("");
+  const [isConfirmingDeletion, setIsConfirmingDeletion] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -84,6 +108,7 @@ export default function UsPage() {
         const user = await getCurrentUser();
         if (!active) return;
         setAuthUser(user);
+        setNameDraft(user.name);
 
         const data = await getPartnerPageData();
         if (active) setProfileData(data);
@@ -111,6 +136,113 @@ export default function UsPage() {
       active = false;
     };
   }, [router]);
+
+  async function handleSaveName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAccountError("");
+    setAccountNotice("");
+    setIsUpdatingAccount(true);
+    try {
+      const user = await updateAccountProfile({ name: nameDraft.trim() });
+      setAuthUser(user);
+      setNameDraft(user.name);
+      setAccountNotice("Your name has been updated.");
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        router.replace("/login");
+      } else {
+        setAccountError(
+          error instanceof Error
+            ? error.message
+            : "Unable to update your name.",
+        );
+      }
+    } finally {
+      setIsUpdatingAccount(false);
+    }
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAccountError("");
+    setAccountNotice("");
+    if (newPassword !== confirmNewPassword) {
+      setAccountError("The new passwords do not match.");
+      return;
+    }
+
+    setIsUpdatingAccount(true);
+    try {
+      await updateAccountProfile({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setAccountNotice("Your password has been changed.");
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        router.replace("/login");
+      } else {
+        setAccountError(
+          error instanceof Error
+            ? error.message
+            : "Unable to change your password.",
+        );
+      }
+    } finally {
+      setIsUpdatingAccount(false);
+    }
+  }
+
+  function handleAvatarSelection(file: File | null) {
+    setAccountError("");
+    setAccountNotice("");
+    if (!file) {
+      setAvatarFile(null);
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setAccountError("Choose a JPEG, PNG, or WebP image.");
+      setAvatarFile(null);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAccountError("Profile images must be 5 MB or smaller.");
+      setAvatarFile(null);
+      return;
+    }
+    setAvatarFile(file);
+  }
+
+  async function handleUploadAvatar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!avatarFile) {
+      setAccountError("Choose a profile image first.");
+      return;
+    }
+
+    setAccountError("");
+    setAccountNotice("");
+    setIsUpdatingAccount(true);
+    try {
+      const user = await uploadProfileImage(avatarFile);
+      setAuthUser(user);
+      setAvatarFile(null);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+      setAccountNotice("Your profile photo has been updated.");
+    } catch (error) {
+      if (error instanceof AuthError && error.status === 401) {
+        router.replace("/login");
+      } else {
+        setAccountError(
+          error instanceof Error
+            ? error.message
+            : "Unable to upload your profile image.",
+        );
+      }
+    } finally {
+      setIsUpdatingAccount(false);
+    }
+  }
 
   async function saveProfile(updates: PartnerProfileUpdate) {
     setProfileError("");
@@ -196,6 +328,65 @@ export default function UsPage() {
     }
   }
 
+  async function handleUnlinkPartner() {
+    setUnlinkError("");
+    setUnlinkNotice("");
+    setIsUnlinking(true);
+    try {
+      const data = await unlinkPartner();
+      setProfileData(data);
+      setInvitationUrl("");
+      setInvitationExpiresAt("");
+      setShowUnlinkConfirmation(false);
+      setUnlinkNotice(
+        "Your accounts are disconnected. Shared data is retained for both accounts.",
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        router.replace("/login");
+      } else {
+        setUnlinkError(
+          error instanceof Error ? error.message : "Unable to unlink partner.",
+        );
+      }
+    } finally {
+      setIsUnlinking(false);
+    }
+  }
+
+  async function handleConfirmDeletion(
+    event: FormEvent<HTMLFormElement>,
+    archive: ArchivedPartnerProfile,
+  ) {
+    event.preventDefault();
+    const code = deletionCodes[archive.id] ?? "";
+    setDeletionError("");
+    setDeletionNotice("");
+    setIsConfirmingDeletion(true);
+    try {
+      const deleted = await confirmArchivedProfileDeletion(archive.id, code);
+      setProfileData(await getPartnerPageData());
+      setDeletionCodes((current) => ({ ...current, [archive.id]: "" }));
+      setDeletionNotice(
+        deleted
+          ? `Shared data with ${archive.formerPartner.name} has been deleted.`
+          : "Your confirmation is saved. The shared data will be deleted after your former partner confirms with the same secret.",
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        router.replace("/login");
+      } else {
+        setDeletionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to confirm shared-data deletion.",
+        );
+      }
+    } finally {
+      setIsConfirmingDeletion(false);
+    }
+  }
+
   async function handleLogout() {
     setLogoutError("");
     setIsLoggingOut(true);
@@ -238,14 +429,26 @@ export default function UsPage() {
 
   return (
     <div className="flex min-h-screen justify-center bg-[#09090f] text-white selection:bg-pink-500/30">
-      <main className="relative flex min-h-screen w-full max-w-md flex-col border-x border-white/[0.06] bg-[#0d0d14] pb-32 shadow-2xl">
+      <main className="relative flex min-h-screen w-full max-w-md flex-col border-x border-white/[0.06] bg-gradient-to-b from-[#11111a] to-[#0d0d14] pb-32 shadow-2xl">
         <AppHeader
           title="Us"
-          caption="COUPLE SETTINGS & PROFILE"
+          caption="YOUR SHARED SPACE"
           brandIcon={UserRound}
         />
 
-        <div className="content space-y-6 px-5 pt-6">
+        <div className="content mx-auto w-full space-y-6 px-4 pt-6 sm:px-5">
+          <div className="px-1">
+            <p className="text-xs font-semibold tracking-[0.16em] text-pink-300/80">
+              A PLACE FOR THE TWO OF YOU
+            </p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+              Your space, together
+            </h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-gray-400">
+              Keep your profile and shared details just the way you like them.
+            </p>
+          </div>
+
           {profileError && (
             <p
               className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200"
@@ -255,17 +458,33 @@ export default function UsPage() {
             </p>
           )}
 
-          <section className="relative space-y-4 overflow-hidden rounded-3xl border border-white/[0.08] bg-[#15151f] p-6 text-center shadow-xl">
-            <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-pink-500/10 blur-2xl" />
+          <section className="relative space-y-4 overflow-hidden rounded-[28px] border border-pink-300/10 bg-gradient-to-br from-[#211824] via-[#191722] to-[#15151e] p-5 text-center shadow-lg shadow-black/20 sm:p-6">
+            <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-pink-400/10 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 -left-12 h-32 w-32 rounded-full bg-rose-400/[0.06] blur-3xl" />
 
             {profileData ? (
               <>
-                <div className="relative z-10 flex items-center justify-center gap-4">
+                <div className="relative z-10">
+                  <h2 className="text-base font-semibold text-white">
+                    Your couple profile
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {partner
+                      ? "A little snapshot of your story so far."
+                      : "Your space is ready whenever you are."}
+                  </p>
+                </div>
+
+                <div className="relative z-10 flex items-center justify-center gap-3 sm:gap-4">
                   <div className="text-center">
                     <div className="rounded-full p-0.5 ring-2 ring-pink-400/40">
-                      <Avatar name={authUser.name} size="lg" />
+                      <Avatar
+                        name={authUser.name}
+                        image={authUser.profileImageUrl ?? undefined}
+                        size="lg"
+                      />
                     </div>
-                    <span className="mt-2 block text-xs font-semibold text-gray-200">
+                    <span className="mt-2 block max-w-24 truncate text-xs font-semibold text-gray-200">
                       {authUser.name}
                     </span>
                   </div>
@@ -277,14 +496,18 @@ export default function UsPage() {
                   <div className="text-center">
                     {partner ? (
                       <div className="rounded-full p-0.5 ring-2 ring-pink-400/40">
-                        <Avatar name={partner.name} size="lg" />
+                        <Avatar
+                          name={partner.name}
+                          image={partner.profileImageUrl ?? undefined}
+                          size="lg"
+                        />
                       </div>
                     ) : (
                       <div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-white/20 text-gray-500">
                         <UserRound size={22} />
                       </div>
                     )}
-                    <span className="mt-2 block text-xs font-semibold text-gray-200">
+                    <span className="mt-2 block max-w-24 truncate text-xs font-semibold text-gray-200">
                       {partner?.name ?? "Not connected"}
                     </span>
                   </div>
@@ -301,8 +524,8 @@ export default function UsPage() {
                   {partner ? "Connected" : "Not connected"}
                 </div>
 
-                <div className="relative z-10 grid grid-cols-2 border-t border-white/[0.06] pt-3">
-                  <div>
+                <div className="relative z-10 grid grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-2xl border border-white/[0.06] bg-black/15 px-3 py-3">
                     <div className="text-base font-bold text-white">
                       {daysTogether === null
                         ? "—"
@@ -310,7 +533,7 @@ export default function UsPage() {
                           ? daysTogether
                           : Math.abs(daysTogether)}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400">
+                    <div className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
                       {daysTogether === null
                         ? "Days together"
                         : daysTogether >= 0
@@ -318,12 +541,12 @@ export default function UsPage() {
                           : "Days until date"}
                     </div>
                   </div>
-                  <div className="border-l border-white/[0.06]">
+                  <div className="rounded-2xl border border-white/[0.06] bg-black/15 px-3 py-3">
                     <div className="text-base font-bold text-pink-300">
                       {profileData.memoriesCount}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400">
-                      Your memories
+                    <div className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                      {partner ? "Shared memories" : "Your memories"}
                     </div>
                   </div>
                 </div>
@@ -335,10 +558,185 @@ export default function UsPage() {
             )}
           </section>
 
-          <section className="relative space-y-3 overflow-hidden rounded-3xl border border-pink-500/20 bg-gradient-to-br from-[#1f1627] via-[#181524] to-[#13131d] p-5 text-white shadow-lg">
-            <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-pink-500/15 blur-2xl" />
+          <section className="space-y-3">
+            <div className="px-1">
+              <h3 className="text-base font-semibold text-white">
+                Your account
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                Manage your profile and keep your sign-in secure.
+              </p>
+            </div>
+            <div className="space-y-4 rounded-[26px] border border-white/[0.07] bg-[#15151f]/90 p-4 shadow-sm shadow-black/10 sm:p-5">
+              {accountError && (
+                <p
+                  className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs text-red-200"
+                  role="alert"
+                >
+                  {accountError}
+                </p>
+              )}
+              {accountNotice && (
+                <p
+                  className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200"
+                  role="status"
+                >
+                  {accountNotice}
+                </p>
+              )}
+
+              <form
+                onSubmit={handleSaveName}
+                className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+              >
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-100">
+                    Display name
+                  </h4>
+                  <p className="mt-1 text-xs text-gray-500">
+                    This is how your partner sees you.
+                  </p>
+                </div>
+                <label className="block text-xs font-medium text-gray-300">
+                  Your name
+                  <input
+                    autoComplete="name"
+                    className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#0e0e16] px-3.5 py-3 text-sm text-white outline-none transition focus:border-pink-400/60 focus:ring-4 focus:ring-pink-500/10"
+                    maxLength={50}
+                    minLength={2}
+                    onChange={(event) => setNameDraft(event.target.value)}
+                    required
+                    value={nameDraft}
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  className="w-full px-4 py-2.5 text-xs"
+                  disabled={
+                    isUpdatingAccount || nameDraft.trim() === authUser.name
+                  }
+                >
+                  {isUpdatingAccount ? "Saving..." : "Save name"}
+                </Button>
+              </form>
+
+              <form
+                onSubmit={handleUploadAvatar}
+                className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+              >
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-100">
+                    Profile photo
+                  </h4>
+                  <p className="mt-1 text-xs text-gray-500">
+                    A friendly face makes your space feel like yours.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl bg-black/15 p-3">
+                  <div className="rounded-full p-0.5 ring-1 ring-pink-300/20">
+                    <Avatar
+                      name={authUser.name}
+                      image={authUser.profileImageUrl ?? undefined}
+                      size="md"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">
+                      {authUser.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                      JPEG, PNG, or WebP · up to 5 MB
+                    </p>
+                  </div>
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Choose profile photo"
+                  className="block w-full rounded-xl border border-white/[0.06] bg-[#0e0e16] p-2.5 text-xs text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-pink-500/15 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-pink-200 hover:file:bg-pink-500/25"
+                  onChange={(event) =>
+                    handleAvatarSelection(event.target.files?.[0] ?? null)
+                  }
+                  type="file"
+                />
+                <Button
+                  type="submit"
+                  className="w-full px-4 py-2.5 text-xs"
+                  disabled={isUpdatingAccount || !avatarFile}
+                >
+                  {isUpdatingAccount ? "Uploading..." : "Upload photo"}
+                </Button>
+              </form>
+
+              <form
+                onSubmit={handleChangePassword}
+                className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+              >
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-100">
+                    Change password
+                  </h4>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Choose a password you haven’t used here before.
+                  </p>
+                </div>
+                <label className="block text-xs font-medium text-gray-300">
+                  Current password
+                  <input
+                    autoComplete="current-password"
+                    className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#0e0e16] px-3.5 py-3 text-sm text-white outline-none transition focus:border-pink-400/60 focus:ring-4 focus:ring-pink-500/10"
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    required
+                    type="password"
+                    value={currentPassword}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-gray-300">
+                  New password
+                  <input
+                    autoComplete="new-password"
+                    className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#0e0e16] px-3.5 py-3 text-sm text-white outline-none transition focus:border-pink-400/60 focus:ring-4 focus:ring-pink-500/10"
+                    minLength={8}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    required
+                    type="password"
+                    value={newPassword}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-gray-300">
+                  Confirm new password
+                  <input
+                    autoComplete="new-password"
+                    className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#0e0e16] px-3.5 py-3 text-sm text-white outline-none transition focus:border-pink-400/60 focus:ring-4 focus:ring-pink-500/10"
+                    minLength={8}
+                    onChange={(event) =>
+                      setConfirmNewPassword(event.target.value)
+                    }
+                    required
+                    type="password"
+                    value={confirmNewPassword}
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  className="w-full px-4 py-2.5 text-xs"
+                  disabled={
+                    isUpdatingAccount ||
+                    !currentPassword ||
+                    !newPassword ||
+                    !confirmNewPassword
+                  }
+                >
+                  {isUpdatingAccount ? "Saving..." : "Change password"}
+                </Button>
+              </form>
+            </div>
+          </section>
+
+          <section className="relative space-y-3 overflow-hidden rounded-[26px] border border-pink-300/10 bg-gradient-to-br from-[#201823] via-[#191722] to-[#15151e] p-5 text-white shadow-sm shadow-black/10">
+            <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-pink-500/10 blur-3xl" />
             <div className="relative z-10 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-bold text-pink-200">
+              <div className="flex items-center gap-2 text-sm font-semibold text-pink-100">
                 <Gift size={18} className="text-pink-400" />
                 Shared Love Note
               </div>
@@ -404,7 +802,7 @@ export default function UsPage() {
                 </div>
               </form>
             ) : (
-              <p className="relative z-10 text-xs italic leading-relaxed text-gray-300">
+              <p className="relative z-10 rounded-2xl border border-white/[0.05] bg-black/15 p-4 text-sm italic leading-relaxed text-gray-300">
                 {profileData?.loveNote
                   ? `“${profileData.loveNote}”`
                   : "No shared note yet. Add something sweet for both of you."}
@@ -413,15 +811,20 @@ export default function UsPage() {
           </section>
 
           <section className="space-y-3">
-            <h3 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">
-              Relationship details
-            </h3>
+            <div className="px-1">
+              <h3 className="text-base font-semibold text-white">
+                Relationship details
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                The little details that make your story yours.
+              </p>
+            </div>
 
-            <div className="overflow-hidden divide-y divide-white/[0.06] rounded-3xl border border-white/[0.08] bg-[#15151f]">
-              <div className="space-y-3 p-4">
+            <div className="overflow-hidden divide-y divide-white/[0.06] rounded-[26px] border border-white/[0.07] bg-[#15151f]/90 shadow-sm shadow-black/10">
+              <div className="space-y-3 p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3.5 text-sm font-medium text-gray-200">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-300">
                       <CalendarHeart size={18} />
                     </div>
                     <div>
@@ -501,9 +904,9 @@ export default function UsPage() {
               </div>
 
               {hasProfileData && !partner && (
-                <div className="space-y-3 p-4">
+                <div className="space-y-3 p-4 sm:p-5">
                   <div className="flex items-center gap-3.5 text-sm font-medium text-gray-200">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-500/10 text-pink-400">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-pink-500/10 text-pink-300">
                       <HeartHandshake size={18} />
                     </div>
                     Invite your partner
@@ -562,8 +965,219 @@ export default function UsPage() {
                   )}
                 </div>
               )}
+
+              {partner && (
+                <div className="space-y-3 border-t border-white/[0.06] p-4 sm:p-5">
+                  <div className="flex items-center gap-3.5 text-sm font-medium text-gray-200">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-500/10 text-red-300">
+                      <HeartHandshake size={18} />
+                    </div>
+                    Disconnect partner
+                  </div>
+                  <p className="pl-12 text-xs leading-relaxed text-gray-400">
+                    This disconnects both accounts. Shared data stays available
+                    to both of you unless you both confirm its deletion.
+                  </p>
+
+                  {unlinkError && (
+                    <p
+                      className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs text-red-200"
+                      role="alert"
+                    >
+                      {unlinkError}
+                    </p>
+                  )}
+
+                  {showUnlinkConfirmation ? (
+                    <div className="space-y-3 rounded-xl border border-red-400/20 bg-red-400/5 p-3">
+                      <p className="text-xs leading-relaxed text-red-100">
+                        Your accounts will be unpaired. The shared note and
+                        anniversary will be retained in both accounts.
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="px-3 py-1.5 text-xs"
+                          disabled={isUnlinking}
+                          onClick={() => setShowUnlinkConfirmation(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          className="bg-red-500 px-3 py-1.5 text-xs hover:bg-red-400"
+                          disabled={isUnlinking}
+                          onClick={handleUnlinkPartner}
+                        >
+                          {isUnlinking ? "Disconnecting..." : "Confirm unlink"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="ml-12 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10"
+                      onClick={() => {
+                        setUnlinkError("");
+                        setShowUnlinkConfirmation(true);
+                      }}
+                    >
+                      Unlink partner
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </section>
+
+          {unlinkNotice && (
+            <p
+              className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200"
+              role="status"
+            >
+              {unlinkNotice}
+            </p>
+          )}
+
+          {deletionNotice && (
+            <p
+              className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200"
+              role="status"
+            >
+              {deletionNotice}
+            </p>
+          )}
+
+          {profileData?.archivedProfiles.length ? (
+            <section className="space-y-3">
+              <h3 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+                Retained shared data
+              </h3>
+              <p className="px-1 text-xs leading-relaxed text-gray-500">
+                An archive is removed only after both former partners enter the
+                same secret and confirm.
+              </p>
+              {deletionError && (
+                <p
+                  className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs text-red-200"
+                  role="alert"
+                >
+                  {deletionError}
+                </p>
+              )}
+              {profileData.archivedProfiles.map((archive) => (
+                <article
+                  key={archive.id}
+                  className="space-y-3 rounded-[26px] border border-white/[0.07] bg-[#15151f]/90 p-4 shadow-sm shadow-black/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar
+                      name={archive.formerPartner.name}
+                      image={archive.formerPartner.profileImageUrl ?? undefined}
+                      size="sm"
+                    />
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-200">
+                        Shared data with {archive.formerPartner.name}
+                      </h4>
+                      <p className="text-[11px] text-gray-500">
+                        Unlinked {formatDate(archive.unlinkedAt.slice(0, 10))}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-black/20 p-3 text-xs text-gray-300">
+                    <p>
+                      Anniversary:{" "}
+                      {archive.anniversaryDate
+                        ? formatDate(archive.anniversaryDate)
+                        : "Not set"}
+                    </p>
+                    {archive.loveNote && (
+                      <p className="mt-2 italic text-gray-400">
+                        “{archive.loveNote}”
+                      </p>
+                    )}
+                  </div>
+
+                  {archive.deletionCodeSet && (
+                    <p className="text-xs text-gray-400">
+                      You:{" "}
+                      {archive.youConfirmed ? "confirmed" : "not confirmed"}
+                      {" · "}
+                      Former partner:{" "}
+                      {archive.partnerConfirmed ? "confirmed" : "not confirmed"}
+                    </p>
+                  )}
+
+                  {archive.youConfirmed && !archive.partnerConfirmed ? (
+                    <p className="text-xs text-amber-200">
+                      You confirmed. Waiting for your former partner to enter
+                      the same secret and confirm.
+                    </p>
+                  ) : (
+                    <>
+                      {archive.deletionCodeSet &&
+                        archive.partnerConfirmed &&
+                        !archive.youConfirmed && (
+                          <p className="text-xs text-amber-200">
+                            Your former partner confirmed. Enter your agreed
+                            secret to confirm deletion.
+                          </p>
+                        )}
+                      <form
+                        onSubmit={(event) =>
+                          handleConfirmDeletion(event, archive)
+                        }
+                        className="space-y-3"
+                      >
+                        <label className="block text-xs font-medium text-gray-300">
+                          {archive.deletionCodeSet
+                            ? "Enter the shared secret"
+                            : "Create a shared secret"}
+                          <input
+                            autoComplete="off"
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-400"
+                            maxLength={64}
+                            minLength={8}
+                            onChange={(event) =>
+                              setDeletionCodes((current) => ({
+                                ...current,
+                                [archive.id]: event.target.value,
+                              }))
+                            }
+                            required
+                            type="password"
+                            value={deletionCodes[archive.id] ?? ""}
+                          />
+                        </label>
+                        <p className="text-[11px] leading-relaxed text-gray-500">
+                          Choose an 8 to 64 character secret and share it
+                          privately. Only its hash is stored.
+                        </p>
+                        <Button
+                          type="submit"
+                          className="px-4 py-2.5 text-xs"
+                          disabled={
+                            isConfirmingDeletion ||
+                            (deletionCodes[archive.id] ?? "").length < 8
+                          }
+                        >
+                          {isConfirmingDeletion
+                            ? "Confirming..."
+                            : archive.deletionCodeSet
+                              ? "Confirm shared-data deletion"
+                              : "Create secret and confirm"}
+                        </Button>
+                      </form>
+                    </>
+                  )}
+                </article>
+              ))}
+            </section>
+          ) : null}
 
           {logoutError && (
             <p
@@ -578,7 +1192,7 @@ export default function UsPage() {
             type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm font-semibold text-red-300 transition-all hover:border-red-500/30 hover:bg-red-500/15 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 text-sm font-medium text-gray-300 transition-all hover:border-red-400/20 hover:bg-red-500/[0.06] hover:text-red-200 disabled:opacity-50"
           >
             <LogOut size={17} />
             {isLoggingOut ? "Signing out..." : "Sign Out"}

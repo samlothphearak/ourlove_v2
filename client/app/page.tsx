@@ -334,13 +334,21 @@ export default function Home() {
                 <>
                   <div className="relative z-10 my-7 flex items-center justify-center gap-3">
                     <div className="rounded-full p-0.5 ring-2 ring-pink-400/40">
-                      <Avatar name={authUser.name} size="md" />
+                      <Avatar
+                        name={authUser.name}
+                        image={authUser.profileImageUrl ?? undefined}
+                        size="md"
+                      />
                     </div>
                     <div className="z-10 -mx-1 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white shadow-lg shadow-pink-500/30">
                       <Heart size={15} fill="currentColor" />
                     </div>
                     <div className="rounded-full p-0.5 ring-2 ring-pink-400/40">
-                      <Avatar name={partner.name} size="md" />
+                      <Avatar
+                        name={partner.name}
+                        image={partner.profileImageUrl ?? undefined}
+                        size="md"
+                      />
                     </div>
                   </div>
 

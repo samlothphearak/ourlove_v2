@@ -3,12 +3,17 @@ import http from "http";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import { connectDatabase } from "./config/database.js";
+import ChatMessage from "./models/ChatMessage.js";
 import healthRoutes from "./routes/health.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import memoryRoutes from "./routes/memory.routes.js";
-import partnerRoutes from "./routes/partner.routes.js";
+import chatRoutes from "./routes/chat.routes.js";
+import partnerRoutes, { getPairContext } from "./routes/partner.routes.js";
+import { getSessionToken } from "./middleware/auth.middleware.js";
+import { getChatRoomId, serializeChatMessage } from "./lib/chat.js";
 
 dotenv.config();
 
@@ -41,6 +46,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/memories", memoryRoutes);
 app.use("/api/partners", partnerRoutes);
+app.use("/api/chat", chatRoutes);
 
 const io = new Server(server, {
   cors: {
@@ -50,19 +56,128 @@ const io = new Server(server, {
   },
 });
 
-// Basic socket connection test.
-// Private messaging and authentication come in later phases.
+app.set("io", io);
+
+io.use(async (socket, next) => {
+  const token = getSessionToken({ headers: socket.handshake.headers });
+  if (!token) return next(new Error("AUTH_REQUIRED"));
+
+  let payload;
+  try {
+    payload = jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return next(new Error("AUTH_REQUIRED"));
+  }
+  if (typeof payload === "string" || typeof payload.sub !== "string") {
+    return next(new Error("AUTH_REQUIRED"));
+  }
+
+  try {
+    const pair = await getPairContext(payload.sub);
+    if (pair.status !== "paired") {
+      return next(new Error("PARTNER_REQUIRED"));
+    }
+
+    socket.data.userId = pair.user._id.toString();
+    socket.data.partnerId = pair.partner._id.toString();
+    return next();
+  } catch (error) {
+    console.error("Chat socket authentication failed:", error?.name || "Error");
+    return next(new Error("CHAT_UNAVAILABLE"));
+  }
+});
+
+const onlineCounts = new Map();
+const getPresenceKey = (room, userId) => `${room}:${userId}`;
+
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  const { userId, partnerId } = socket.data;
+  const room = getChatRoomId(userId, partnerId);
+  const userPresenceKey = getPresenceKey(room, userId);
+  const partnerPresenceKey = getPresenceKey(room, partnerId);
+  const userConnections = onlineCounts.get(userPresenceKey) || 0;
+
+  socket.join(room);
+  onlineCounts.set(userPresenceKey, userConnections + 1);
+  socket.emit("chat:presence", {
+    userId: partnerId,
+    isOnline: (onlineCounts.get(partnerPresenceKey) || 0) > 0,
+  });
+  if (userConnections === 0) {
+    socket.to(room).emit("chat:presence", { userId, isOnline: true });
+  }
+
+  socket.on("chat:send", (payload, acknowledge) => {
+    const ack = typeof acknowledge === "function" ? acknowledge : () => {};
+    const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+    if (!text || text.length > 2000) {
+      return ack({
+        success: false,
+        message: "Messages must be between 1 and 2000 characters.",
+      });
+    }
+
+    const now = Date.now();
+    const window = socket.data.chatSendWindow;
+    if (!window || now - window.startedAt >= 60_000) {
+      socket.data.chatSendWindow = { startedAt: now, count: 0 };
+    }
+    if (socket.data.chatSendWindow.count >= 60) {
+      return ack({
+        success: false,
+        message: "You are sending messages too quickly. Please wait a moment.",
+      });
+    }
+    socket.data.chatSendWindow.count += 1;
+
+    void (async () => {
+      const pair = await getPairContext(userId);
+      if (
+        pair.status !== "paired" ||
+        pair.partner._id.toString() !== partnerId
+      ) {
+        socket.emit("chat:unavailable");
+        socket.disconnect(true);
+        return ack({
+          success: false,
+          message: "Your partner connection is no longer active.",
+        });
+      }
+
+      const message = await ChatMessage.create({
+        conversationId: room,
+        sender: userId,
+        recipient: partnerId,
+        text,
+      });
+      io.to(room).emit("chat:message", serializeChatMessage(message));
+      return ack({ success: true });
+    })().catch((error) => {
+      console.error("Chat message could not be saved:", error?.name || "Error");
+      ack({
+        success: false,
+        message: "Message could not be sent. Please try again.",
+      });
+    });
+  });
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
+    const remainingConnections = (onlineCounts.get(userPresenceKey) || 1) - 1;
+    if (remainingConnections > 0) {
+      onlineCounts.set(userPresenceKey, remainingConnections);
+      return;
+    }
+    onlineCounts.delete(userPresenceKey);
+    io.to(room).emit("chat:presence", { userId, isOnline: false });
   });
 });
 
 app.use((error, req, res, next) => {
   const isInvalidJson = error?.type === "entity.parse.failed";
-  if (!isInvalidJson) {
+  const isTooLarge = error?.type === "entity.too.large";
+  const isInvalidUpload = error?.name === "MulterError";
+  const isUploadTooLarge = error?.code === "LIMIT_FILE_SIZE";
+  if (!isInvalidJson && !isInvalidUpload) {
     console.error(
       "API request failed:",
       req.method,
@@ -70,12 +185,26 @@ app.use((error, req, res, next) => {
       error?.name || "Error",
     );
   }
-  res.status(isInvalidJson ? 400 : 500).json({
-    success: false,
-    message: isInvalidJson
-      ? "Request body must be valid JSON."
-      : "An unexpected server error occurred.",
-  });
+  res
+    .status(
+      isInvalidJson
+        ? 400
+        : isTooLarge || isUploadTooLarge
+          ? 413
+          : isInvalidUpload
+            ? 400
+            : 500,
+    )
+    .json({
+      success: false,
+      message: isInvalidJson
+        ? "Request body must be valid JSON."
+        : isTooLarge || isUploadTooLarge
+          ? "Uploaded file is too large."
+          : isInvalidUpload
+            ? "The memory photo upload could not be processed."
+            : "An unexpected server error occurred.",
+    });
 });
 
 async function startServer() {
