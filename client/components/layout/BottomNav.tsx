@@ -5,11 +5,12 @@ import {
   MessageCircle,
   Images,
   CalendarDays,
+  UsersRound,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 
-export type TabId = "home" | "chat" | "memories" | "days" | "us";
+export type TabId = "home" | "chat" | "feed" | "memories" | "days" | "us";
 
 export interface Tab {
   id: TabId;
@@ -26,6 +27,7 @@ interface BottomNavProps {
 const DEFAULT_TABS: Tab[] = [
   { id: "home", label: "Home", icon: House },
   { id: "chat", label: "Chat", icon: MessageCircle },
+  { id: "feed", label: "Feed", icon: UsersRound },
   { id: "memories", label: "Memories", icon: Images },
   { id: "days", label: "Our Days", icon: CalendarDays },
   { id: "us", label: "Us", icon: UserRound },
@@ -53,8 +55,9 @@ export default function BottomNav({
             key={tab.id}
             type="button"
             onClick={() => onTabChange(tab.id)}
+            aria-label={tab.label}
             aria-current={isActive ? "page" : undefined}
-            className={`group relative flex flex-col items-center justify-center py-1.5 px-3 rounded-2xl transition-all duration-300 active:scale-95 ${
+            className={`group relative flex items-center justify-center py-2 px-3 rounded-2xl transition-all duration-300 active:scale-95 ${
               isActive
                 ? "text-pink-300 bg-pink-500/15 font-semibold shadow-sm shadow-pink-950/20"
                 : "text-gray-400 hover:text-gray-200 hover:bg-white/[0.03]"
@@ -64,12 +67,11 @@ export default function BottomNav({
               size={20}
               strokeWidth={isActive ? 2.4 : 1.8}
               className={`transition-transform duration-300 group-hover:scale-110 ${
-                isActive ? "text-pink-400 drop-shadow-[0_0_8px_rgba(244,114,182,0.4)]" : ""
+                isActive
+                  ? "text-pink-400 drop-shadow-[0_0_8px_rgba(244,114,182,0.4)]"
+                  : ""
               }`}
             />
-            <span className="text-[10px] mt-1 tracking-tight">
-              {tab.label}
-            </span>
           </button>
         );
       })}

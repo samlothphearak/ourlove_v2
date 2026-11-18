@@ -61,6 +61,21 @@ messages and partner presence through authenticated Socket.IO connections.
 Older history is fetched in pages as needed. Only users with a reciprocal
 partner link can access the conversation; unlinking disconnects both users.
 Messages remain stored but are not accessible while the users are unpaired.
+The chat shows the partner profile image, online status, or their last-seen time
+when offline. Messages are marked seen while the recipient has the conversation
+open.
+Choosing “Chat about this” on a memory opens chat with that memory selected and
+its title added to the editable message draft. Sending that message attaches a
+verified snapshot of the memory image, which either partner can open from chat.
+
+## Community feed
+
+The `/feed` page supports photo posts with Public, Friends, and Only me
+audiences, plus friend requests, likes, comments, in-app reposts, and shareable
+links. Public posts are available to signed-in OurLove users; Friends posts
+require an accepted friend relationship. Reposts and direct links continue to
+enforce the original post's visibility. Photos are uploaded to Cloudinary and
+post, friendship, like, and comment data are stored in MongoDB.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

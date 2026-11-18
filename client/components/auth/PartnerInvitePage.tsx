@@ -12,9 +12,7 @@ interface PartnerInvitePageProps {
   code: string;
 }
 
-export default function PartnerInvitePage({
-  code,
-}: PartnerInvitePageProps) {
+export default function PartnerInvitePage({ code }: PartnerInvitePageProps) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -80,8 +78,8 @@ export default function PartnerInvitePage({
         </p>
         <h1 className="text-2xl font-bold">Join your partner</h1>
         <p className="mt-3 text-sm leading-6 text-gray-400">
-          Accept this invitation to connect your accounts and share your
-          private space.
+          Accept this invitation to connect your accounts and share your private
+          space.
         </p>
 
         {error && (

@@ -718,7 +718,11 @@ export default function MemoriesPage() {
 
                   <button
                     type="button"
-                    onClick={() => router.push("/chat")}
+                    onClick={() =>
+                      router.push(
+                        `/chat?memoryId=${encodeURIComponent(activeMemory.id)}`,
+                      )
+                    }
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-semibold shadow-md shadow-pink-950/30 hover:opacity-95 transition-all"
                   >
                     <MessageCircle size={14} /> Chat about this

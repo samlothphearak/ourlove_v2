@@ -83,7 +83,7 @@ export async function getPairContext(userId) {
   if (!user.partnerId) return { status: "unpaired", user };
 
   const partner = await User.findById(user.partnerId).select(
-    "name partnerId profileImageUrl",
+    "name partnerId profileImageUrl lastSeenAt",
   );
   if (!partner || partner.partnerId?.toString() !== user._id.toString()) {
     return { status: "inconsistent", user };
@@ -250,7 +250,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
   try {
     const user = await User.findById(req.authUser._id)
       .select("partnerId")
-      .populate("partnerId", "name profileImageUrl");
+      .populate("partnerId", "name profileImageUrl lastSeenAt");
 
     if (!user) {
       return res.status(404).json({
@@ -260,9 +260,17 @@ router.get("/me", requireAuth, async (req, res, next) => {
     }
 
     res.set("Cache-Control", "no-store");
+    const partner = safePartner(user.partnerId);
     return res.json({
       success: true,
-      partner: safePartner(user.partnerId),
+      partner: partner
+        ? {
+            ...partner,
+            lastSeenAt: user.partnerId.lastSeenAt
+              ? user.partnerId.lastSeenAt.toISOString()
+              : null,
+          }
+        : null,
     });
   } catch (error) {
     return next(error);

@@ -1,11 +1,12 @@
 interface Props {
   name: string;
   image?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
 }
 
 export default function Avatar({ name, image, size = "md" }: Props) {
   const sizes = {
+    xs: "h-7 w-7 text-[10px]",
     sm: "h-9 w-9 text-xs",
     md: "h-12 w-12 text-sm",
     lg: "h-16 w-16 text-lg",

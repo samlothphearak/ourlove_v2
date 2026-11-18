@@ -11,6 +11,7 @@ import {
   ArrowUpRight,
   Sparkles,
   Gift,
+  UsersRound,
   Moon,
   LogOut,
   Copy,
@@ -464,6 +465,13 @@ export default function Home() {
                 description="Save moments"
                 color="purple"
                 onClick={() => navigateToTab("memories")}
+              />
+              <Feature
+                icon={UsersRound}
+                title="Community"
+                description="Photos & friends"
+                color="pink"
+                onClick={() => navigateToTab("feed")}
               />
               <Feature
                 icon={CalendarDays}

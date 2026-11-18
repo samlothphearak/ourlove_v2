@@ -4,6 +4,7 @@ export interface PartnerSummary {
   id: string;
   name: string;
   profileImageUrl: string | null;
+  lastSeenAt: string | null;
 }
 
 export interface PartnerInvitation {
@@ -97,12 +98,20 @@ function readPartnerPageData(value: unknown): PartnerPageData {
 
 function readPartner(value: unknown): PartnerSummary | null {
   if (value === null) return null;
+  if (!isRecord(value)) {
+    throw new Error("The partner API returned an invalid partner.");
+  }
+
+  const lastSeenAt = value.lastSeenAt;
   if (
-    !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.name !== "string" ||
     (value.profileImageUrl !== null &&
-      typeof value.profileImageUrl !== "string")
+      typeof value.profileImageUrl !== "string") ||
+    (lastSeenAt !== undefined &&
+      lastSeenAt !== null &&
+      (typeof lastSeenAt !== "string" ||
+        Number.isNaN(Date.parse(lastSeenAt))))
   ) {
     throw new Error("The partner API returned an invalid partner.");
   }
@@ -110,6 +119,7 @@ function readPartner(value: unknown): PartnerSummary | null {
     id: value.id,
     name: value.name,
     profileImageUrl: value.profileImageUrl,
+    lastSeenAt: typeof lastSeenAt === "string" ? lastSeenAt : null,
   };
 }
 
